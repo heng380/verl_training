@@ -27,7 +27,7 @@ actor_rollout_ref:
       lr: 1e-6
     ppo_mini_batch_size: 128  # Increased for larger train_batch_size
     ppo_micro_batch_size_per_gpu: 16  # Increased to better utilize 8 GPUs
-    loss_agg_mode: seq-mean-token-sum-norm # GRPO paper's loss aggregation (sequence-level mean of token-level mean)
+    loss_agg_mode: seq-mean-token-mean # GRPO paper's loss aggregation (sequence-level mean of token-level mean)
     fsdp_config:
       model_dtype: bfloat16
   
@@ -70,5 +70,5 @@ trainer:
   resume_mode: disable  # Disable checkpoint resuming
   logger: ["console", "wandb"]
   project_name: numina-cot
-  experiment_name: drgrpo
+  experiment_name: grpo
 
