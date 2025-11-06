@@ -1,0 +1,74 @@
+# Configuration for Qwen2.5-Math-1.5B GRPO training with token-mean loss aggregation (DAPO style)
+# This config extends the default ppo_trainer.yaml and overrides specific parameters
+# Use this for comparison with seq-mean-token-mean version
+
+hydra:
+  searchpath:
+    - file://../../verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+# Data configuration
+data:
+  train_files: /home/ubuntu/data/gsm8k/train.parquet
+  val_files: /home/ubuntu/data/gsm8k/test.parquet
+  train_batch_size: 1024
+  max_prompt_length: 512
+  max_response_length: 1024
+
+# Actor, rollout and reference model configuration
+actor_rollout_ref:
+  model:
+    path: /home/ubuntu/model/Qwen2.5-Math-1.5B
+    use_remove_padding: true
+  
+  actor:
+    optim:
+      lr: 1e-6
+    ppo_mini_batch_size: 256
+    ppo_micro_batch_size_per_gpu: 32
+    loss_agg_mode: token-mean  # DAPO style: direct token-level mean (default)
+    fsdp_config:
+      model_dtype: bfloat16
+      param_offload: false
+      optimizer_offload: false
+    use_dynamic_bsz: true
+  
+  rollout:
+    name: vllm
+    dtype: bfloat16
+    log_prob_micro_batch_size_per_gpu: 32
+    tensor_model_parallel_size: 2
+    gpu_memory_utilization: 0.85
+    n: 4
+    max_num_batched_tokens: 8192
+    max_num_seqs: 512
+  
+  ref:
+    log_prob_micro_batch_size_per_gpu: 16
+
+# Algorithm configuration
+algorithm:
+  adv_estimator: grpo
+  kl_ctrl:
+    kl_coef: 0.001
+
+# Critic configuration (disabled for GRPO)
+critic:
+  enable: false
+
+# Trainer configuration
+trainer:
+  val_before_train: True
+  n_gpus_per_node: 8
+  nnodes: 1
+  save_freq: 10
+  test_freq: 10
+  total_epochs: 10
+  resume_mode: disable
+  logger: ["console", "wandb"]
+  project_name: qwen-length-investigation
+  experiment_name: token-length-token-mean  # Different name for comparison
+

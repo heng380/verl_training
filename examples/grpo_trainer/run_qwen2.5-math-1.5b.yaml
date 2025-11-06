@@ -1,0 +1,87 @@
+# Configuration for Qwen2.5-Math-1.5B GRPO training
+# This config extends the default ppo_trainer.yaml and overrides specific parameters
+
+hydra:
+  searchpath:
+    - file://../../verl/trainer/config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+# Data configuration
+data:
+  train_files: /home/ubuntu/data/gsm8k/train.parquet
+  val_files: /home/ubuntu/data/gsm8k/test.parquet
+  train_batch_size: 1024  # Doubled to increase throughput
+  max_prompt_length: 512
+  max_response_length: 1024
+
+# Actor, rollout and reference model configuration
+actor_rollout_ref:
+  model:
+    path: /home/ubuntu/model/Qwen2.5-Math-1.5B
+    use_remove_padding: true  # Enable sequence packing to save memory and increase throughput
+  
+  actor:
+    optim:
+      lr: 1e-6
+    ppo_mini_batch_size: 256  # Increased for larger train_batch_size
+    ppo_micro_batch_size_per_gpu: 32  # Doubled to better utilize GPU memory
+    loss_agg_mode: seq-mean-token-sum-norm  # DrGRPO: normalize with global constant
+    fsdp_config:
+      model_dtype: bfloat16
+      param_offload: false  # Keep params on GPU for faster training
+      optimizer_offload: false  # Keep optimizer on GPU
+    use_dynamic_bsz: true  # Automatically adjust batch size for better throughput
+  
+  rollout:
+    name: vllm
+    dtype: bfloat16
+    log_prob_micro_batch_size_per_gpu: 32  # Doubled
+    tensor_model_parallel_size: 2  # Use 2 GPUs for tensor parallel in vLLM rollout
+    gpu_memory_utilization: 0.85  # Increased to utilize more GPU memory (model is small 1.5B)
+    n: 4  # Generate 4 responses per prompt for GRPO (group sampling)
+    max_num_batched_tokens: 8192  # Increase to allow more tokens in parallel
+    max_num_seqs: 512  # Increase concurrent sequences
+  
+  ref:
+    log_prob_micro_batch_size_per_gpu: 16  # Doubled
+
+# Algorithm configuration
+algorithm:
+  # GRPO advantage estimator (no critic needed)
+  adv_estimator: grpo
+  kl_ctrl:
+    kl_coef: 0.001
+
+# Critic configuration (disabled for GRPO)
+critic:
+  enable: false
+
+# Custom reward function configuration (supports both #### and \boxed{} formats)
+custom_reward_function:
+  path: /home/ubuntu/repos/verl/examples/grpo_trainer/gsm8k_boxed_reward.py
+  name: compute_score
+  reward_kwargs:
+    method: flexible  # Use flexible method to support both formats
+
+# Reward model configuration
+# Note: num_examine is set in main_ppo.py (0 for training, 1 for validation)
+# So we don't set it here to avoid duplicate argument error
+reward_model:
+  reward_kwargs: {}
+
+# Trainer configuration
+trainer:
+  val_before_train: True
+  n_gpus_per_node: 8  # Use all 8 GPUs
+  nnodes: 1
+  save_freq: 50
+  test_freq: 10
+  total_epochs: 10
+  resume_mode: disable  # Disable checkpoint resuming
+  logger: ["console", "wandb"]
+  project_name: numina-cot
+  experiment_name: numina-cot-drgrpo-qwen-2.5-math-1.5b
+
