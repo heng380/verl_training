@@ -1,2 +1,2 @@
-cd examples/grpo_trainer
+cd examples/grpo_trainer  
 bash qwen_model.sh
